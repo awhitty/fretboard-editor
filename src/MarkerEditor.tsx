@@ -224,7 +224,7 @@ const ColorWidget = observer(() => {
   );
 });
 
-const DeleteWidget = observer(() => {
+observer(() => {
   const rootStore = useRootStore();
   const [isConfirming, setIsConfirming] = useState(false);
 
@@ -409,6 +409,12 @@ export const MarkerEditor = observer<{ rootStore: IRootStore }>(
       }
     });
 
+    useHotkeys("backspace", () => {
+      if (rootStore.document.selection.hasItems) {
+        rootStore.document.deleteEntities(rootStore.document.selection.items);
+      }
+    });
+
     return (
       <RootStoreContext.Provider value={rootStore}>
         <EditorLayout>
@@ -471,7 +477,6 @@ export const MarkerEditor = observer<{ rootStore: IRootStore }>(
             <FretWidget />
             <StringWidget />
             <ColorWidget />
-            <DeleteWidget />
             <ExportWidget />
           </Sidebar>
         </EditorLayout>

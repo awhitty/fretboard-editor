@@ -1,6 +1,5 @@
 import {
   getRoot,
-  getSnapshot,
   IAnyStateTreeNode,
   Instance,
   types as t,
@@ -24,7 +23,7 @@ const identityTransform = {
 };
 
 export const Dot = t
-  .model({
+  .model("Dot", {
     type: optionalLiteral("DOT"),
     id: t.optional(t.identifier, () => ulid()),
     name: t.string,
@@ -95,7 +94,9 @@ export function getTypedRoot(
   return getRoot(node) as Instance<typeof RootStore>;
 }
 
-export const DotNodeReference = t.reference(Dot);
+export const DotNodeReference = t.safeReference(Dot, {
+  acceptsUndefined: false,
+});
 type NodeInstance = IDot;
 
 export const Selection = t
@@ -135,13 +136,16 @@ export const Selection = t
     get isEmpty(): boolean {
       return self.items.length === 0;
     },
+    get hasItems(): boolean {
+      return self.items.length > 0;
+    },
     contains(node: NodeInstance) {
       return self.items.includes(node);
     },
   }));
 
 export const BaseInteraction = t.model("BaseInteraction", {
-  targets: Selection,
+  targets: t.optional(Selection, {}),
   start: t.frozen<NotePlacement>(),
   current: t.frozen<NotePlacement>(),
 });
@@ -169,7 +173,9 @@ export const TranslateInteraction = t
     },
   }))
   .actions((self) => ({
-    begin() {},
+    begin(targets: NodeInstance[]) {
+      self.targets.replace(targets);
+    },
     update(point?: NotePlacement) {
       if (point) {
         self.current = point;
@@ -261,17 +267,15 @@ export const PointerTool = t
             self.interaction = TranslateInteraction.create({
               start: point,
               current: point,
-              targets: getSnapshot(root.document.selection),
             });
           } else {
             self.interaction = AddNoteInteraction.create({
               start: point,
               current: point,
-              targets: getSnapshot(root.document.selection),
             });
           }
 
-          self.interaction.begin();
+          self.interaction.begin(root.document.selection.items);
         } else {
           root.document.selection.clear();
         }

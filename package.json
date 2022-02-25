@@ -6,7 +6,7 @@
     "build": "tsc && vite build",
     "serve": "vite preview",
     "gh-pages": "gh-pages -d dist",
-    "publish": "run-s build gh-pages"
+    "deploy": "run-s build gh-pages"
   },
   "dependencies": {
     "@radix-ui/colors": "^0.1.8",

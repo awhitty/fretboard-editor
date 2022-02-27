@@ -8,6 +8,13 @@ import { ulid } from "ulid";
 import { NotePlacement, StringAndFret } from "./types";
 import { action, IObservableValue, observable } from "mobx";
 import { UndoManager, UndoManagerInstance } from "./undo_manager";
+import { ZoomTransform } from "d3-zoom";
+import * as d3 from "d3";
+
+export type Point2D = {
+  x: number;
+  y: number;
+};
 
 const optionalLiteral = <T extends string | number | boolean | Date>(v: T) =>
   t.optional(t.literal(v), v);
@@ -97,7 +104,8 @@ export function getTypedRoot(
 export const DotNodeReference = t.safeReference(Dot, {
   acceptsUndefined: false,
 });
-type NodeInstance = IDot;
+
+export type NodeInstance = IDot;
 
 export const Selection = t
   .model({
@@ -144,11 +152,70 @@ export const Selection = t
     },
   }));
 
-export const BaseInteraction = t.model("BaseInteraction", {
-  targets: t.optional(Selection, {}),
-  start: t.frozen<NotePlacement>(),
-  current: t.frozen<NotePlacement>(),
-});
+export const BaseInteraction = t
+  .model("BaseInteraction", {
+    targets: t.optional(Selection, {}),
+    start: t.frozen<Point2D>(),
+    current: t.frozen<Point2D>(),
+  })
+  .views((self) => ({
+    get currentNote(): NotePlacement {
+      const root = getTypedRoot(self);
+      return root.board.findNearestNote(self.current.x, self.current.y);
+    },
+    get startNote(): NotePlacement {
+      const root = getTypedRoot(self);
+      return root.board.findNearestNote(self.start.x, self.start.y);
+    },
+    get hasMoved(): boolean {
+      return self.start.x !== self.current.x || self.start.y !== self.current.y;
+    },
+    get rect(): DOMRectReadOnly {
+      return new DOMRectReadOnly(
+        Math.min(self.start.x, self.current.x),
+        Math.min(self.start.y, self.current.y),
+        Math.abs(self.start.x - self.current.x),
+        Math.abs(self.start.y - self.current.y)
+      );
+    },
+  }));
+
+export const MarqueeSelectInteraction = t
+  .compose(
+    BaseInteraction,
+    t.model({
+      type: optionalLiteral("MARQUEE_SELECT"),
+      isUsingShift: t.boolean,
+    })
+  )
+  .named("MarqueeSelectInteraction")
+  .actions((self) => {
+    function selectNodesInRect() {
+      const root = getTypedRoot(self);
+      const nodesInRect = root.document.findNodesInRect(self.rect);
+
+      if (self.isUsingShift) {
+        self.targets.add(nodesInRect);
+      } else {
+        self.targets.replace(nodesInRect);
+      }
+    }
+
+    return {
+      begin() {
+        selectNodesInRect();
+      },
+      update(point: Point2D) {
+        self.current = point;
+        selectNodesInRect();
+        getTypedRoot(self).document.selection.replace(self.targets.items);
+      },
+      commit() {
+        selectNodesInRect();
+        getTypedRoot(self).document.selection.replace(self.targets.items);
+      },
+    };
+  });
 
 export const TranslateInteraction = t
   .compose(
@@ -161,14 +228,14 @@ export const TranslateInteraction = t
   .views((self) => ({
     get transform(): NoteTransform {
       return {
-        fret: self.current.fret - self.start.fret,
-        string: self.current.string - self.start.string,
+        fret: self.currentNote.fret - self.startNote.fret,
+        string: self.currentNote.string - self.startNote.string,
       };
     },
     get hasMoved(): boolean {
       return (
-        self.current.fret !== self.start.fret ||
-        self.current.string !== self.start.string
+        self.currentNote.fret !== self.startNote.fret ||
+        self.currentNote.string !== self.startNote.string
       );
     },
   }))
@@ -176,13 +243,11 @@ export const TranslateInteraction = t
     begin(targets: NodeInstance[]) {
       self.targets.replace(targets);
     },
-    update(point?: NotePlacement) {
-      if (point) {
-        self.current = point;
-        self.targets.items.forEach((target) =>
-          target.setTransform(self.transform)
-        );
-      }
+    update(point: Point2D) {
+      self.current = point;
+      self.targets.items.forEach((target) =>
+        target.setTransform(self.transform)
+      );
     },
     commit() {
       self.targets.items.forEach((target) => target.commitTransform());
@@ -200,29 +265,27 @@ export const AddNoteInteraction = t
   .views((self) => ({
     get transform(): NoteTransform {
       return {
-        fret: self.current.fret - self.start.fret,
-        string: self.current.string - self.start.string,
+        fret: self.currentNote.fret - self.startNote.fret,
+        string: self.currentNote.string - self.startNote.string,
       };
     },
     get hasMoved(): boolean {
       return (
-        self.current.fret !== self.start.fret ||
-        self.current.string !== self.start.string
+        self.currentNote.fret !== self.startNote.fret ||
+        self.currentNote.string !== self.startNote.string
       );
     },
   }))
   .actions((self) => ({
     begin() {
       const root = getTypedRoot(self);
-      self.targets.replace([root.document.addDot(self.current)]);
+      self.targets.replace([root.document.addDot(self.currentNote)]);
     },
-    update(point?: NotePlacement) {
-      if (point) {
-        self.current = point;
-        self.targets.items.forEach((target) =>
-          target.setTransform(self.transform)
-        );
-      }
+    update(point: Point2D) {
+      self.current = point;
+      self.targets.items.forEach((target) =>
+        target.setTransform(self.transform)
+      );
     },
     commit() {
       self.targets.items.forEach((target) => target.commitTransform());
@@ -233,7 +296,13 @@ export const AddNoteInteraction = t
 
 export const PointerTool = t
   .model({
-    interaction: t.maybeNull(t.union(TranslateInteraction, AddNoteInteraction)),
+    interaction: t.maybeNull(
+      t.union(
+        TranslateInteraction,
+        MarqueeSelectInteraction,
+        AddNoteInteraction
+      )
+    ),
     initialTarget: t.maybeNull(DotNodeReference),
     hoveredNode: t.maybeNull(DotNodeReference),
     hoveredPointer: t.maybeNull(PointerDot),
@@ -241,13 +310,15 @@ export const PointerTool = t
   })
   .actions((self) => {
     return {
-      down(point?: NotePlacement, shiftKey?: boolean) {
+      down(point: Point2D, shiftKey?: boolean) {
         const root = getTypedRoot(self);
         getUndoManager().startGroup();
 
-        if (point) {
-          const node = root.document.firstNodeAtCoord(point);
+        const isPointInBoard = root.board.isPointInBoard(point.x, point.y);
+        const nearestNote = root.board.findNearestNote(point.x, point.y);
+        const node = root.document.firstNodeAtCoord(nearestNote);
 
+        if (isPointInBoard) {
           if (shiftKey) {
             self.isUsingShift = true;
           }
@@ -274,17 +345,26 @@ export const PointerTool = t
               current: point,
             });
           }
-
-          self.interaction.begin(root.document.selection.items);
         } else {
-          root.document.selection.clear();
+          self.hoveredPointer = null;
+          self.hoveredNode = null;
+
+          self.interaction = MarqueeSelectInteraction.create({
+            start: point,
+            current: point,
+            isUsingShift: shiftKey ?? false,
+          });
         }
+        self.interaction.begin(root.document.selection.items);
       },
-      move(point?: NotePlacement) {
-        self.interaction?.update(point);
+      move(p2: Point2D) {
+        const root = getTypedRoot(self);
+        const point = root.board.findNearestNote(p2.x, p2.y);
+        const isPointInBoard = root.board.isPointInBoard(p2.x, p2.y);
+        self.interaction?.update(p2);
 
         if (!self.interaction) {
-          if (point) {
+          if (isPointInBoard) {
             const nodes = getTypedRoot(self).document.entitiesAtCoord(point);
             if (nodes.length > 0) {
               self.hoveredNode = nodes[0];
@@ -339,6 +419,17 @@ export const DocumentNode = t
         (e) => e.props.fret === fret && e.props.string === string
       );
     },
+    findNodesInRect(rect: DOMRectReadOnly): NodeInstance[] {
+      return self.entities.filter((e) => {
+        const root = getTypedRoot(self);
+        const { fret, string } = e.props;
+        const x = root.board.fretToX(fret);
+        const y = root.board.stringToY(string);
+        return (
+          x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+        );
+      });
+    },
   }))
   .actions((self) => ({
     addDot({ fret, string }: StringAndFret) {
@@ -357,13 +448,100 @@ export const DocumentNode = t
         self.entities.remove(entity);
       });
     },
+    selectAll() {
+      self.selection.replace(self.entities);
+    },
   }));
 
 export interface IDocumentNodeInstance extends Instance<typeof DocumentNode> {}
 
+export const ZoomState = t
+  .model({
+    isZooming: t.optional(t.boolean, false),
+    zoomState: t.optional(t.frozen<ZoomTransform>(), () => d3.zoomIdentity),
+    clientRect: t.optional(
+      t.frozen<DOMRectReadOnly>(),
+      () => new DOMRectReadOnly()
+    ),
+  })
+  .views((self) => ({
+    worldToViewport(x: number, y: number) {
+      return self.zoomState.apply([x, y]);
+    },
+    viewportToWorld(x: number, y: number) {
+      return self.zoomState.invert([x, y]);
+    },
+    screenToWorld(x: number, y: number) {
+      return this.viewportToWorld(x - self.clientRect.x, y - self.clientRect.y);
+    },
+    get viewportExtent(): DOMRectReadOnly {
+      const [left, top] = this.screenToWorld(
+        self.clientRect.left,
+        self.clientRect.top
+      );
+      const [right, bottom] = this.screenToWorld(
+        self.clientRect.right,
+        self.clientRect.bottom
+      );
+      return new DOMRectReadOnly(left, top, right - left, bottom - top);
+    },
+  }))
+  .actions((self) => ({
+    setZoomState(state: d3.ZoomTransform) {
+      self.zoomState = state;
+    },
+    setClientRect(rect: DOMRectReadOnly) {
+      self.clientRect = rect;
+    },
+    setIsZooming(val: boolean) {
+      self.isZooming = val;
+    },
+  }));
+
+const BoardData = t
+  .model()
+  .volatile((self) => ({
+    findNearestNote(x: number, y: number): NotePlacement {
+      throw new Error("Please call setFindNearestNote first");
+    },
+    extent: new DOMRectReadOnly(),
+    stringToY(string: number): number {
+      throw new Error("Please call setStringToY first");
+    },
+    fretToX(fret: number): number {
+      throw new Error("Please call setStringToY first");
+    },
+  }))
+  .actions((self) => ({
+    setFindNearestNote(fn: (x: number, y: number) => NotePlacement) {
+      self.findNearestNote = fn;
+    },
+    setStringToY(fn: (string: number) => number) {
+      self.stringToY = fn;
+    },
+    setFretToX(fn: (fret: number) => number) {
+      self.fretToX = fn;
+    },
+    setExtent(extent: DOMRectReadOnly) {
+      self.extent = extent;
+    },
+  }))
+  .views((self) => ({
+    isPointInBoard(x: number, y: number) {
+      return (
+        x >= self.extent.left &&
+        x <= self.extent.right &&
+        y >= self.extent.top &&
+        y <= self.extent.bottom
+      );
+    },
+  }));
+
 export const RootStore = t.model({
   document: t.optional(DocumentNode, {}),
   tool: t.optional(PointerTool, {}),
+  zoom: t.optional(ZoomState, {}),
+  board: t.optional(BoardData, {}),
 });
 
 export interface IRootStore extends Instance<typeof RootStore> {}

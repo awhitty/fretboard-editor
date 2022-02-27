@@ -35,7 +35,7 @@ interface FretboardData {
   totalHeight: number;
   totalWidth: number;
   tuning: NoteType[];
-  findNearestNote: (x: number, y: number) => NotePlacement | undefined;
+  findNearestNote: (x: number, y: number) => NotePlacement;
 }
 
 const FretboardDataContext = createContext<FretboardData>({} as any);
@@ -351,15 +351,7 @@ export const FretboardData = ({
     (d) => d.y
   );
 
-  const findNearestNote = (x: number, y: number): NotePlacement | undefined => {
-    if (x < boardExtent.left || x > boardExtent.right) {
-      return undefined;
-    }
-
-    if (y < boardExtent.top || y > boardExtent.bottom) {
-      return undefined;
-    }
-
+  const findNearestNote = (x: number, y: number): NotePlacement => {
     return allNotesOnBoard[delaunay.find(x, y)]!;
   };
 

@@ -8,7 +8,7 @@ import { colors } from "./stitches.config";
 import { Interval, Note, NoteLiteral, Scale } from "@tonaljs/tonal";
 import { NotePlacement, NoteType } from "./types";
 import * as d3 from "d3";
-import { isDefined } from "./IsDefined";
+import { isDefined } from "./is_defined";
 
 const STANDARD_TUNING = ["E4", "B3", "G3", "D3", "A2", "E2"];
 const STRING_LENGTH = 1400;

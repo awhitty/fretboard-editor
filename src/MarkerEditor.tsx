@@ -1,8 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useHotkeys } from "react-hotkeys-hook";
-import { getUndoManager, IDot, IRootStore, NodeInstance } from "./models";
+import { RootStoreInstance } from "./state/root_store";
 import * as RadioGroup from "@radix-ui/react-radio-group";
-import * as Feather from "react-feather";
+import * as Lucide from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import {
   DotMarks,
   Fretboard,
@@ -33,7 +34,9 @@ import { styled } from "./stitches.config";
 import { ulid } from "ulid";
 import useMeasure from "react-use-measure";
 import { renderToString } from "react-dom/server";
-import mergeRefs from "react-merge-refs";
+import { AnyNodeInstance, DotMarkerNodeInstance } from "./state/document";
+import { getUndoManager } from "./state/undo";
+import { CreateToolInstance, PointerToolInstance } from "./state/tools";
 
 const Box = styled("div");
 
@@ -72,28 +75,33 @@ const RoundButton = styled("button", {
   width: 48,
   alignItems: "center",
   justifyContent: "center",
-  background: "rgba(0,0,0,0.1)",
-  color: "rgba(0,0,0,0.8)",
+  background: "rgba(120,120,120,0.2)",
+  color: "rgb(123,123,124)",
   border: "none",
   borderRadius: 100,
   backdropFilter: "blur(4px)",
   "&:hover:not(:disabled)": {
-    background: "rgba(0,0,0,0.2)",
+    background: "rgba(0,0,0,0.15)",
+    color: "rgb(80,80,80)",
   },
-  "&:disabled": { color: "rgba(0,0,0,0.4)" },
+  "&:disabled": { background: "rgba(0,0,0,0.05)", color: "rgb(180,180,180)" },
+  variants: {
+    isActive: {
+      true: {
+        color: "#009EE9ff",
+        background: "rgba(255,255,255,.6)",
+        boxShadow: "0px 0px 0px 2px #009EE9aa",
+        "&:hover:not(:disabled)": {
+          color: "#009EE9ff",
+          background: "rgba(255,255,255,.6)",
+        },
+      },
+      false: {},
+    },
+  },
 });
 
-const Knobs = styled("div", {
-  vStack: 8,
-  position: "absolute",
-  top: 12,
-  right: 12,
-  background: "#fff",
-  borderRadius: 12,
-  padding: 8,
-});
-
-const Controls = styled("div", {
+const BottomControls = styled("div", {
   hStack: 8,
   position: "absolute",
   bottom: 12,
@@ -101,6 +109,24 @@ const Controls = styled("div", {
   right: 12,
   padding: 8,
 });
+
+const LeftControls = styled("div", {
+  vStack: 8,
+  justifyContent: "center",
+  position: "absolute",
+  top: 12,
+  bottom: 12,
+  left: 12,
+  padding: 8,
+});
+
+function isTouchDevice() {
+  return (
+    "ontouchstart" in window ||
+    navigator.maxTouchPoints > 0 ||
+    (navigator as any).msMaxTouchPoints > 0
+  );
+}
 
 const useId = () => {
   return useMemo(() => ulid(), []);
@@ -207,8 +233,8 @@ const StringWidget = observer(() => {
 });
 
 const getWidgetValue = <V extends any>(
-  items: IDot[],
-  accessor: (v: IDot) => V,
+  items: DotMarkerNodeInstance[],
+  accessor: (v: DotMarkerNodeInstance) => V,
   emptyDefault: V,
   mixedDefault: V
 ): V =>
@@ -370,24 +396,22 @@ function copyTextToClipboard(text: string) {
   );
 }
 
-const ExportWidget = () => {
+const useCopyToClipboard = () => {
   const rootStore = useRootStore();
-  const handleClick = () => {
+  return useCallback(() => {
     const text = renderToString(
       <RootStoreContext.Provider value={rootStore}>
         <FretboardData
-          minFret={rootStore.document.board.minFret}
-          maxFret={rootStore.document.board.maxFret}
-          showFretNumbers={rootStore.document.board.showFretNumbers}
+          minFret={rootStore.document.boardConfig.minFret}
+          maxFret={rootStore.document.boardConfig.maxFret}
+          showFretNumbers={rootStore.document.boardConfig.showFretNumbers}
         >
           <StaticFretboard />
         </FretboardData>
       </RootStoreContext.Provider>
     );
     copyTextToClipboard(text);
-  };
-
-  return <NiceButton onClick={handleClick}>Copy SVG</NiceButton>;
+  }, [rootStore]);
 };
 
 function useSpaceIsPressed() {
@@ -419,7 +443,7 @@ function useSpaceIsPressed() {
   return spaceIsPressed;
 }
 
-function useD3Zoom(root: IRootStore) {
+function useD3Zoom(root: RootStoreInstance) {
   const spaceIsPressed = useSpaceIsPressed();
   const zoomerRef = useRef<ZoomBehavior<Element, any> | null>(null);
   const ref = useRef<SVGSVGElement>(null);
@@ -445,15 +469,15 @@ function useD3Zoom(root: IRootStore) {
       const selection = d3.select(canvas as any);
 
       zoomer.on("start", () => {
-        root.zoom.setIsZooming(true);
+        root.viewport.setIsZooming(true);
       });
 
       zoomer.on("zoom", (e) => {
-        root.zoom.setZoomState(e.transform);
+        root.viewport.setZoomState(e.transform);
       });
 
       zoomer.on("end", () => {
-        root.zoom.setIsZooming(false);
+        root.viewport.setIsZooming(false);
       });
 
       zoomer(selection);
@@ -501,7 +525,7 @@ export const ScalingFretboard = observer(
         height={height}
         {...(props as any)}
       >
-        <g transform={root.zoom.zoomState.toString()}>
+        <g transform={root.viewport.zoomState.toString()}>
           <FretMarks />
           <DotMarks />
           <StringMarks />
@@ -517,7 +541,7 @@ export const ScalingFretboard = observer(
   }
 );
 
-const SelectionMarker = observer(({ node }: { node: NodeInstance }) => {
+const SelectionMarker = observer(({ node }: { node: AnyNodeInstance }) => {
   const { fretToFingerX, stringToY } = useFretboardData();
 
   const cx = fretToFingerX(node.props.fret);
@@ -536,7 +560,7 @@ const SelectionMarker = observer(({ node }: { node: NodeInstance }) => {
   );
 });
 
-const HoveredMarker = observer(({ node }: { node: NodeInstance }) => {
+const HoveredMarker = observer(({ node }: { node: AnyNodeInstance }) => {
   const { fretToFingerX, stringToY } = useFretboardData();
 
   const cx = fretToFingerX(node.props.fret);
@@ -555,7 +579,7 @@ const HoveredMarker = observer(({ node }: { node: NodeInstance }) => {
   );
 });
 
-const RootStoreContext = createContext<IRootStore | null>(null);
+const RootStoreContext = createContext<RootStoreInstance | null>(null);
 const useRootStore = () => {
   const rootStore = useContext(RootStoreContext);
   if (!rootStore) {
@@ -564,8 +588,193 @@ const useRootStore = () => {
   return rootStore;
 };
 
+const PointerToolUI = observer(({ tool }: { tool: PointerToolInstance }) => {
+  const interaction = tool.interaction;
+  return (
+    <>
+      {tool.hoveredNode && <HoveredMarker node={tool.hoveredNode} />}
+      {interaction?.type === "MARQUEE_SELECT" && (
+        <rect
+          x={interaction.rect.x}
+          y={interaction.rect.y}
+          width={interaction.rect.width}
+          height={interaction.rect.height}
+          stroke={"#009EE966"}
+          fill={"#009EE911"}
+        />
+      )}
+    </>
+  );
+});
+
+const CreateToolUI = observer(({ tool }: { tool: CreateToolInstance }) => {
+  const interaction = tool.interaction;
+  return (
+    <>
+      {tool.hoveredPointer && (
+        <NoteMarker
+          shape="circle"
+          fret={tool.hoveredPointer.props.fret}
+          string={tool.hoveredPointer.props.string}
+        />
+      )}
+    </>
+  );
+});
+
+const FretboardGraphics = observer(() => {
+  const rootStore = useRootStore();
+  return (
+    <>
+      {rootStore.document.entities.map((model) => (
+        <NoteMarker key={model.id} {...model.props} />
+      ))}
+      {rootStore.document.selection.items.map((model) => (
+        <SelectionMarker key={"selected_" + model.id} node={model} />
+      ))}
+      {rootStore.tool.type === "POINTER_TOOL" && (
+        <PointerToolUI tool={rootStore.tool} />
+      )}
+      {rootStore.tool.type === "CREATE_TOOL" && (
+        <CreateToolUI tool={rootStore.tool} />
+      )}
+    </>
+  );
+});
+
+const Controls = observer(() => {
+  const copyToClipboard = useCopyToClipboard();
+  const undoManager = getUndoManager();
+  const rootStore = useRootStore();
+  return (
+    <>
+      <LeftControls>
+        <LayoutGroup>
+          <AnimatePresence>
+            {rootStore.document.selection.hasItems && (
+              <RoundButton
+                key="deselect"
+                as={motion.button}
+                layout
+                initial={{ x: -72 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ opacity: 0 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => rootStore.document.selection.clear()}
+              >
+                <Lucide.XSquare size={20} />
+              </RoundButton>
+            )}
+            <RoundButton
+              key="pointer"
+              as={motion.button}
+              layout
+              initial={{ x: -72 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => rootStore.setToolType("POINTER_TOOL")}
+              isActive={rootStore.tool.type === "POINTER_TOOL"}
+            >
+              <Lucide.MousePointer2 size={20} />
+            </RoundButton>
+            <RoundButton
+              key="create"
+              as={motion.button}
+              layout
+              initial={{ x: -72 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => rootStore.setToolType("CREATE_TOOL")}
+              isActive={rootStore.tool.type === "CREATE_TOOL"}
+            >
+              <Lucide.Pencil size={20} />
+            </RoundButton>
+
+            {rootStore.document.selection.hasItems && (
+              <RoundButton
+                key="delete"
+                as={motion.button}
+                layout
+                initial={{ x: -72 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ opacity: 0 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() =>
+                  rootStore.document.deleteEntities(
+                    rootStore.document.selection.items
+                  )
+                }
+              >
+                <Lucide.Trash size={20} />
+              </RoundButton>
+            )}
+          </AnimatePresence>
+        </LayoutGroup>
+      </LeftControls>
+      <BottomControls>
+        <LayoutGroup>
+          <AnimatePresence>
+            <RoundButton
+              key="undo"
+              as={motion.button}
+              layout
+              initial={{ y: 72 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              whileTap={{ scale: 0.9 }}
+              disabled={!undoManager.canUndo}
+              onClick={undoManager.undo}
+            >
+              <Lucide.Undo size={20} />
+            </RoundButton>
+            <RoundButton
+              key="redo"
+              as={motion.button}
+              layout
+              initial={{ y: 72 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              whileTap={{ scale: 0.9 }}
+              disabled={!undoManager.canRedo}
+              onClick={undoManager.redo}
+            >
+              <Lucide.Redo size={20} />
+            </RoundButton>
+            <Box css={{ marginLeft: "auto", hStack: 8 }}>
+              <RoundButton
+                key="copy"
+                as={motion.button}
+                layout
+                initial={{ y: 72 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ opacity: 0 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={copyToClipboard}
+              >
+                <Lucide.Clipboard size={20} />
+              </RoundButton>
+              {/*<RoundButton*/}
+              {/*  as={motion.button}*/}
+              {/*  layout*/}
+              {/*  initial={{ y: 72 }}*/}
+              {/*  animate={{ y: 0, opacity: 1 }}*/}
+              {/*  exit={{ opacity: 0 }}*/}
+              {/*  whileTap={{ scale: 0.9 }}*/}
+              {/*>*/}
+              {/*  <Lucide.Settings size={20} />*/}
+              {/*</RoundButton>*/}
+            </Box>
+          </AnimatePresence>
+        </LayoutGroup>
+      </BottomControls>
+    </>
+  );
+});
+
 export const MarkerEditor = observer(
-  ({ rootStore }: { rootStore: IRootStore }) => {
+  ({ rootStore }: { rootStore: RootStoreInstance }) => {
     const spaceIsPressed = useSpaceIsPressed();
     const {
       findNearestNote,
@@ -585,7 +794,9 @@ export const MarkerEditor = observer(
     }, [width, height, zoomTo]);
 
     useEffect(() => {
-      rootStore.zoom.setClientRect(new DOMRectReadOnly(x, y, width, height));
+      rootStore.viewport.setClientRect(
+        new DOMRectReadOnly(x, y, width, height)
+      );
     }, [rootStore, x, y, width, height]);
 
     useEffect(() => {
@@ -606,41 +817,60 @@ export const MarkerEditor = observer(
       );
     }, [rootStore, totalHeight, totalWidth]);
 
-    const handleDown = useCallback(
-      (e: React.PointerEvent) => {
+    const handleMouseDown = useCallback(
+      (e: React.MouseEvent) => {
+        e.preventDefault();
         if (spaceIsPressed.current) {
           return;
         }
-        const [x, y] = rootStore.zoom.viewportToWorld(...d3.pointer(e));
+        const [x, y] = rootStore.viewport.viewportToWorld(...d3.pointer(e));
         rootStore.tool.down({ x, y }, e.shiftKey);
       },
-      [findNearestNote, rootStore.tool, rootStore.zoom.zoomState]
+      [rootStore.tool, rootStore.viewport.zoomState]
+    );
+
+    const handleTouchStart = useCallback(
+      (e: React.TouchEvent) => {
+        e.preventDefault();
+        console.log("touchstart");
+        const [x, y] = rootStore.viewport.viewportToWorld(...d3.pointers(e)[0]);
+        rootStore.tool.down({ x, y }, e.shiftKey);
+      },
+      [rootStore.tool, rootStore.viewport.zoomState]
     );
 
     const handleMove = useCallback(
-      (e: PointerEvent) => {
-        const [x, y] = rootStore.zoom.screenToWorld(...d3.pointer(e));
+      (e: MouseEvent | TouchEvent) => {
+        const [x, y] = rootStore.viewport.screenToWorld(...d3.pointer(e));
         rootStore.tool.move({ x, y });
       },
-      [findNearestNote, rootStore.tool, rootStore.zoom.zoomState]
+      [rootStore.tool, rootStore.viewport.zoomState]
     );
 
     const handleUp = useCallback(
-      (e: PointerEvent) => {
+      (e: MouseEvent | TouchEvent) => {
         rootStore.tool.up();
       },
       [rootStore.tool]
     );
 
     useEffect(() => {
-      window.addEventListener("pointermove", handleMove);
-      window.addEventListener("pointerup", handleUp);
-
-      return () => {
-        window.removeEventListener("pointermove", handleMove);
-        window.removeEventListener("pointerup", handleUp);
-      };
-    });
+      if (isTouchDevice()) {
+        window.addEventListener("touchmove", handleMove);
+        window.addEventListener("touchend", handleUp);
+        return () => {
+          window.removeEventListener("touchmove", handleMove);
+          window.removeEventListener("touchend", handleUp);
+        };
+      } else {
+        window.addEventListener("mousemove", handleMove);
+        window.addEventListener("mouseup", handleUp);
+        return () => {
+          window.removeEventListener("mousemove", handleMove);
+          window.removeEventListener("mouseup", handleUp);
+        };
+      }
+    }, [handleMove, handleUp]);
 
     const undoManager = getUndoManager();
 
@@ -650,7 +880,7 @@ export const MarkerEditor = observer(
       }
     });
 
-    const selectAllRef = useHotkeys("cmd+a", (e) => {
+    useHotkeys("cmd+a", (e) => {
       e.preventDefault();
       rootStore.document.selectAll();
     });
@@ -667,7 +897,17 @@ export const MarkerEditor = observer(
       }
     });
 
-    const interaction = rootStore.tool.interaction;
+    const touchProps = useMemo(() => {
+      if (isTouchDevice()) {
+        return {
+          onTouchStart: handleTouchStart,
+        };
+      } else {
+        return {
+          onMouseDown: handleMouseDown,
+        };
+      }
+    }, [handleTouchStart, handleMouseDown]);
 
     return (
       <RootStoreContext.Provider value={rootStore}>
@@ -675,69 +915,15 @@ export const MarkerEditor = observer(
           <Workspace ref={measureRef}>
             <ScalingFretboard
               tabIndex={0}
-              ref={mergeRefs([svgRef, selectAllRef])}
+              ref={svgRef}
               width={width}
               height={height}
-              onPointerDown={handleDown}
+              {...touchProps}
             >
-              {rootStore.document.entities.map((model) => (
-                <NoteMarker key={model.id} {...model.props} />
-              ))}
-              {rootStore.tool.hoveredPointer && (
-                <NoteMarker
-                  shape="circle"
-                  fret={rootStore.tool.hoveredPointer.props.fret}
-                  string={rootStore.tool.hoveredPointer.props.string}
-                />
-              )}
-              {rootStore.document.selection.items.map((model) => (
-                <SelectionMarker key={"selected_" + model.id} node={model} />
-              ))}
-              {rootStore.tool.hoveredNode && (
-                <HoveredMarker node={rootStore.tool.hoveredNode} />
-              )}
-              {interaction?.type === "MARQUEE_SELECT" && (
-                <rect
-                  x={interaction.rect.x}
-                  y={interaction.rect.y}
-                  width={interaction.rect.width}
-                  height={interaction.rect.height}
-                  stroke={"#009EE966"}
-                  fill={"#009EE911"}
-                />
-              )}
+              <FretboardGraphics />
             </ScalingFretboard>
           </Workspace>
-          <Knobs>
-            <ColorWidget />
-            <ExportWidget />
-          </Knobs>
-          <Controls>
-            <RoundButton
-              disabled={!undoManager.canUndo}
-              onClick={undoManager.undo}
-            >
-              <Feather.CornerUpLeft />
-            </RoundButton>
-            <RoundButton
-              disabled={!undoManager.canRedo}
-              onClick={undoManager.redo}
-            >
-              <Feather.CornerUpRight />
-            </RoundButton>
-            <Box css={{ marginLeft: "auto" }}>
-              <RoundButton
-                disabled={!rootStore.document.selection.hasItems}
-                onClick={() =>
-                  rootStore.document.deleteEntities(
-                    rootStore.document.selection.items
-                  )
-                }
-              >
-                <Feather.Trash />
-              </RoundButton>
-            </Box>
-          </Controls>
+          <Controls />
         </EditorLayout>
       </RootStoreContext.Provider>
     );

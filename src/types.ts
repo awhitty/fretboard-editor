@@ -15,3 +15,13 @@ export interface StringAndFret {
   string: number;
   fret: number;
 }
+
+export type Point2D = {
+  x: number;
+  y: number;
+};
+
+export interface NoteTransform {
+  fret: number;
+  string: number;
+}

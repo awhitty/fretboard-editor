@@ -2,7 +2,7 @@ import { Fretboard, NoteMarker, useFretboardData } from "./Fretboard";
 import React, { useState } from "react";
 import { NotePlacement, NoteType } from "./types";
 import { Chord, Note, Scale } from "@tonaljs/tonal";
-import { isDefined } from "./IsDefined";
+import { isDefined } from "./is_defined";
 
 const Board = () => {
   const { findNearestNote, minNote, maxNote, placeNote } = useFretboardData();

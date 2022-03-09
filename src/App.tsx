@@ -1,6 +1,6 @@
 import makeInspectable from "mobx-devtools-mst";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { RootStore } from "./state/root_store";
 import { FretboardData } from "./Fretboard";
 import { MarkerEditor } from "./MarkerEditor";

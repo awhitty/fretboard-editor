@@ -6,13 +6,17 @@ import React, {
 } from "react";
 import { colors } from "./stitches.config";
 import { Interval, Note, NoteLiteral, Scale } from "@tonaljs/tonal";
-import { NotePlacement, NoteType } from "./types";
+import { NotePlacement, NoteType, StringAndFret } from "./types";
 import * as d3 from "d3";
 import { isDefined } from "./is_defined";
 
 const STANDARD_TUNING = ["E4", "B3", "G3", "D3", "A2", "E2"];
 const STRING_LENGTH = 1400;
 const TOTAL_FRET_COUNT = 24;
+
+function transposeBySemitones(note: string, semitones: number) {
+  return Note.fromMidi(Note.midi(note)! + semitones);
+}
 
 interface FretboardData {
   boardExtent: { top: number; left: number; bottom: number; right: number };
@@ -36,6 +40,7 @@ interface FretboardData {
   totalWidth: number;
   tuning: NoteType[];
   findNearestNote: (x: number, y: number) => NotePlacement;
+  placementToNote: (placement: StringAndFret) => NoteType | null;
 }
 
 const FretboardDataContext = createContext<FretboardData>({} as any);
@@ -131,6 +136,7 @@ export const DotMarks = () => {
     </>
   );
 };
+
 export const StringNames = () => {
   const { minString, maxString, tuning, stringToY, boardExtent } =
     useFretboardData();
@@ -157,6 +163,7 @@ export const StringNames = () => {
     </>
   );
 };
+
 export const FretNumbers = () => {
   const {
     octaveMarkerFrets,
@@ -355,6 +362,18 @@ export const FretboardData = ({
     return allNotesOnBoard[delaunay.find(x, y)]!;
   };
 
+  const placementToNote = ({ string, fret }: StringAndFret) => {
+    const stringIndex = string - 1;
+    if (!(stringIndex < 0 || stringIndex >= tuning.length)) {
+      const note = tuning[stringIndex];
+      return Note.get(
+        Note.transpose(note, Interval.fromSemitones(fret))
+      ) as NoteType;
+    } else {
+      return null;
+    }
+  };
+
   const octaveMarkerFrets = [12, 24];
   const secondaryMarkerFrets = [3, 5, 7, 9, 15, 17, 19, 21];
 
@@ -365,6 +384,7 @@ export const FretboardData = ({
         findNearestNote,
         fretIsVisible,
         fretToX,
+        placementToNote,
         fretToFingerX,
         maxFret,
         maxNote,
@@ -397,18 +417,26 @@ export interface NoteMarkerProps {
   outline?: boolean;
   shape?: "square" | "circle";
   label?: string;
+  labelKind?: "note-name" | "manual";
   color?: any;
 }
+
+const formatNoteName = (note: NoteType) => {
+  const letter = note.letter;
+  const alt = note.alt === -1 ? "b" : note.alt === 1 ? "#" : "";
+  return `${letter}${alt}`;
+};
 
 export const NoteMarker = ({
   fret,
   string,
   label,
+  labelKind = "manual",
   outline = false,
   shape = "square",
   color = colors.sand11,
 }: NoteMarkerProps) => {
-  const { fretToFingerX, stringToY } = useFretboardData();
+  const { fretToFingerX, stringToY, placementToNote } = useFretboardData();
 
   const cx = fretToFingerX(fret);
   const cy = stringToY(string);
@@ -420,6 +448,10 @@ export const NoteMarker = ({
     : { fill: color };
 
   const textCSS: CSSProperties = outline ? { fill: color } : { fill: "white" };
+
+  const note = placementToNote({ fret, string });
+  const labelText =
+    labelKind === "note-name" ? (note ? formatNoteName(note) : "") : label;
 
   return (
     <g>
@@ -436,7 +468,7 @@ export const NoteMarker = ({
       ) : (
         <circle cx={cx} cy={cy} r={halfWidth} style={shapeCSS} />
       )}
-      {label && (
+      {labelText && (
         <text
           x={cx}
           y={cy + 1}
@@ -447,7 +479,7 @@ export const NoteMarker = ({
           fontWeight="bold"
           style={textCSS}
         >
-          {label}
+          {labelText}
         </text>
       )}
     </g>

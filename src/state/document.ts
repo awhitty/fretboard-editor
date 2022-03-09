@@ -5,6 +5,8 @@ import { NoteTransform, StringAndFret } from "../types";
 import { identityTransform } from "./note_transforms";
 import { getTypedRoot } from "./root_store";
 
+const LabelKind = t.union(t.literal("note-name"), t.literal("manual"));
+
 export const DotMarkerNode = t
   .model("DotMarkerNode", {
     type: optionalLiteral("DOT_MARKER_NODE"),
@@ -13,6 +15,7 @@ export const DotMarkerNode = t
     transform: t.optional(t.frozen<NoteTransform>(), identityTransform),
     _fret: t.number,
     _string: t.number,
+    _labelKind: t.optional(LabelKind, "manual"),
     _label: t.optional(t.string, ""),
     _shape: t.optional(t.enumeration(["circle", "square"]), "circle"),
     _color: t.optional(t.string, "#000"),
@@ -24,6 +27,7 @@ export const DotMarkerNode = t
         fret: self._fret + self.transform.fret,
         string: self._string + self.transform.string,
         label: self._label,
+        labelKind: self._labelKind,
         shape: self._shape,
         color: self._color,
         outline: self._outline,
@@ -33,6 +37,12 @@ export const DotMarkerNode = t
   .actions((self) => ({
     setLabel(label: string) {
       self._label = label;
+    },
+    setLabelKind(kind: "note-name" | "manual") {
+      self._labelKind = kind;
+    },
+    setShape(shape: "circle" | "square") {
+      self._shape = shape;
     },
     setFret(fret: number) {
       self._fret = fret;
@@ -67,13 +77,133 @@ export const DotNodeReference = t.safeReference(DotMarkerNode, {
 
 export type AnyNodeInstance = DotMarkerNodeInstance;
 
+const getWidgetValue = <V extends any>(
+  items: DotMarkerNodeInstance[],
+  accessor: (v: DotMarkerNodeInstance) => V,
+  emptyDefault: V,
+  mixedDefault: V
+): V =>
+  items.reduce(
+    (prev, curr) => (prev === accessor(curr) ? prev : mixedDefault),
+    items.length > 0 ? accessor(items[0]) : emptyDefault
+  );
+
+const SetLabelAction = t
+  .model("SetLabelAction", {
+    type: optionalLiteral("SET_LABEL"),
+  })
+  .views((self) => ({
+    get labelKind(): "note-name" | "manual" | "mixed" {
+      const root = getTypedRoot(self);
+      return getWidgetValue(
+        root.document.selection.items,
+        (v) => v._labelKind,
+        "note-name",
+        "mixed"
+      );
+    },
+    get label(): string | "mixed" {
+      const root = getTypedRoot(self);
+      return getWidgetValue(
+        root.document.selection.items,
+        (v) => v._label,
+        "",
+        "mixed"
+      );
+    },
+  }))
+  .actions((self) => ({
+    setLabel(label: string): void {
+      this.setKind("manual");
+      const root = getTypedRoot(self);
+      root.document.selection.items.forEach((item) => item.setLabel(label));
+    },
+    setKind(kind: "note-name" | "manual"): void {
+      const root = getTypedRoot(self);
+      root.document.selection.items.forEach((item) => item.setLabelKind(kind));
+    },
+    clearLabel(): void {
+      this.setLabel("");
+    },
+  }));
+
+const SetShapeAction = t
+  .model("SetShapeAction", {
+    type: optionalLiteral("SET_SHAPE"),
+  })
+  .views((self) => ({
+    get shape(): "circle" | "square" | "mixed" {
+      const root = getTypedRoot(self);
+      return getWidgetValue(
+        root.document.selection.items,
+        (v) => v._shape,
+        "circle",
+        "mixed"
+      );
+    },
+  }))
+  .actions((self) => ({
+    setShape(shape: "circle" | "square"): void {
+      const root = getTypedRoot(self);
+      root.document.selection.items.forEach((item) => item.setShape(shape));
+    },
+  }));
+
+const SetColorAction = t
+  .model("SetColorAction", {
+    type: optionalLiteral("SET_COLOR"),
+  })
+  .views((self) => ({
+    get color(): string | "mixed" {
+      const root = getTypedRoot(self);
+      return getWidgetValue(
+        root.document.selection.items,
+        (v) => v._color,
+        "black",
+        "mixed"
+      );
+    },
+  }))
+  .actions((self) => ({
+    setColor(color: string): void {
+      const root = getTypedRoot(self);
+      root.document.selection.items.forEach((item) => item.setColor(color));
+    },
+  }));
+
 export const Selection = t
   .model({
     items: t.optional(t.array(DotNodeReference), []),
+    action: t.maybeNull(
+      t.union(SetLabelAction, SetShapeAction, SetColorAction)
+    ),
   })
+
   .actions((self) => ({
+    startAction(action: "label" | "shape" | "color"): void {
+      switch (action) {
+        case "label":
+          self.action = SetLabelAction.create({});
+          break;
+        case "shape":
+          self.action = SetShapeAction.create({});
+          break;
+        case "color":
+          self.action = SetColorAction.create({});
+          break;
+      }
+    },
+    clearAction(): void {
+      self.action = null;
+    },
+    clearActionIfEmpty() {
+      if (self.items.length === 0) {
+        this.clearAction();
+      }
+    },
     replace(nodes: AnyNodeInstance[]) {
       self.items.replace(nodes);
+      this.clearActionIfEmpty();
     },
     add(nodes: AnyNodeInstance[]) {
       nodes.forEach((node) => {
@@ -90,14 +220,17 @@ export const Selection = t
           self.items.remove(node);
         }
       });
+      this.clearActionIfEmpty();
     },
     remove(nodes: AnyNodeInstance[]) {
       nodes.forEach((node) => {
         self.items.remove(node);
       });
+      this.clearActionIfEmpty();
     },
     clear() {
       self.items.replace([]);
+      this.clearActionIfEmpty();
     },
   }))
   .views((self) => ({
@@ -154,6 +287,12 @@ export const DocumentNode = t
     },
     deleteEntities(entities: DotMarkerNodeInstance[]) {
       entities.forEach((entity) => {
+        self.selection.remove([entity]);
+        self.entities.remove(entity);
+      });
+    },
+    deleteSelection() {
+      self.selection.items.forEach((entity) => {
         self.selection.remove([entity]);
         self.entities.remove(entity);
       });

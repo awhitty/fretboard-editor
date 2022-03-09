@@ -35,6 +35,15 @@ export const ViewportData = t
     screenToWorld(x: number, y: number) {
       return this.viewportToWorld(x - self.clientRect.x, y - self.clientRect.y);
     },
+    worldValueToViewportValue(v: number) {
+      return v * self.zoomState.k;
+    },
+    worldRectToViewportRect(rect: DOMRectReadOnly) {
+      const [x, y] = this.worldToViewport(rect.x, rect.y);
+      const w = this.worldValueToViewportValue(rect.width);
+      const h = this.worldValueToViewportValue(rect.height);
+      return new DOMRectReadOnly(x, y, w, h);
+    },
     get viewportExtent(): DOMRectReadOnly {
       const [left, top] = this.screenToWorld(
         self.clientRect.left,

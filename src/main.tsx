@@ -10,6 +10,8 @@ globalCss({
     margin: 0,
     padding: 0,
     fontFamily: "system-ui",
+    overflow: "hidden",
+    position: "fixed",
   },
 })();
 

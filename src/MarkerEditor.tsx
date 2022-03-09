@@ -1,9 +1,12 @@
 import { observer } from "mobx-react-lite";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
+
 import { useHotkeys } from "react-hotkeys-hook";
 import { RootStoreInstance } from "./state/root_store";
 import * as RadioGroup from "@radix-ui/react-radio-group";
 import * as Lucide from "lucide-react";
-import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+import { LucideProps } from "lucide-react";
+import { AnimatePresence, motion, Variants } from "framer-motion";
 import {
   DotMarks,
   Fretboard,
@@ -110,13 +113,42 @@ const BottomControls = styled("div", {
   padding: 8,
 });
 
+const TopControls = styled("div", {
+  hStack: 8,
+  justifyContent: "center",
+  position: "absolute",
+  top: 12,
+  left: 12,
+  right: 12,
+  padding: 8,
+});
+
 const LeftControls = styled("div", {
+  $$edgeButtonDirection: "row",
   vStack: 8,
+  alignItems: "flex-start",
   justifyContent: "center",
   position: "absolute",
   top: 12,
   bottom: 12,
   left: 12,
+  padding: 8,
+});
+
+const ControlSpacer = styled("div", {
+  width: 8,
+  height: 8,
+});
+
+const RightControls = styled("div", {
+  $$edgeButtonDirection: "row-reverse",
+  vStack: 8,
+  alignItems: "flex-end",
+  justifyContent: "center",
+  position: "absolute",
+  top: 12,
+  bottom: 12,
+  right: 12,
   padding: 8,
 });
 
@@ -127,224 +159,6 @@ function isTouchDevice() {
     (navigator as any).msMaxTouchPoints > 0
   );
 }
-
-const useId = () => {
-  return useMemo(() => ulid(), []);
-};
-
-const TextField = ({
-  label,
-  disabled,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: ReactNode }) => {
-  const id = useId();
-  return (
-    <Box
-      css={{
-        vStack: 4,
-        alignItems: "stretch",
-        padding: "8px 12px",
-      }}
-    >
-      <Box
-        as="label"
-        htmlFor={id}
-        css={{ color: disabled ? "#999" : "black", fontWeight: 500 }}
-      >
-        {label}
-      </Box>
-      <input id={id} type="text" disabled={disabled} {...props} />
-    </Box>
-  );
-};
-
-const LabelWidget = observer(() => {
-  const rootStore = useRootStore();
-
-  const value = rootStore.document.selection.items.reduce(
-    (prev, curr) => (prev === curr.props.label ? prev : "Mixed"),
-    rootStore.document.selection.items.length > 0
-      ? rootStore.document.selection.items[0].props.label
-      : ""
-  );
-
-  return (
-    <TextField
-      disabled={rootStore.document.selection.isEmpty}
-      label="Label"
-      value={value ?? ""}
-      onChange={(e) => {
-        rootStore.document.selection.items.forEach((s) =>
-          s.setLabel(e.currentTarget.value)
-        );
-      }}
-    />
-  );
-});
-
-const FretWidget = observer(() => {
-  const rootStore = useRootStore();
-
-  const value = rootStore.document.selection.items.reduce(
-    (prev, curr) => (prev === curr.props.fret ? prev : "Mixed"),
-    rootStore.document.selection.items.length > 0
-      ? rootStore.document.selection.items[0].props.fret
-      : ""
-  );
-
-  return (
-    <TextField
-      disabled={rootStore.document.selection.isEmpty}
-      label="Fret"
-      type="number"
-      value={value ?? ""}
-      onChange={(e) => {
-        rootStore.document.selection.items.forEach((s) =>
-          s.setFret(+e.currentTarget.value)
-        );
-      }}
-    />
-  );
-});
-
-const StringWidget = observer(() => {
-  const rootStore = useRootStore();
-
-  const value = rootStore.document.selection.items.reduce(
-    (prev, curr) => (prev === curr.props.string ? prev : "Mixed"),
-    rootStore.document.selection.items.length > 0
-      ? rootStore.document.selection.items[0].props.string
-      : ""
-  );
-
-  return (
-    <TextField
-      disabled={rootStore.document.selection.isEmpty}
-      label="String"
-      type="number"
-      value={value ?? ""}
-      onChange={(e) => {
-        rootStore.document.selection.items.forEach((s) =>
-          s.setString(+e.currentTarget.value)
-        );
-      }}
-    />
-  );
-});
-
-const getWidgetValue = <V extends any>(
-  items: DotMarkerNodeInstance[],
-  accessor: (v: DotMarkerNodeInstance) => V,
-  emptyDefault: V,
-  mixedDefault: V
-): V =>
-  items.reduce(
-    (prev, curr) => (prev === accessor(curr) ? prev : mixedDefault),
-    items.length > 0 ? accessor(items[0]) : emptyDefault
-  );
-
-const ColorRadioItem = ({ value }: { value: string }) => (
-  <RadioGroup.Item value={value} asChild>
-    <Box
-      as="button"
-      css={{
-        background: "none",
-        border: "none",
-        padding: 0,
-        display: "inline-flex",
-      }}
-    >
-      <svg width={24} height={24}>
-        <circle cx={12} cy={12} r={7} fill={value} />
-        <RadioGroup.Indicator asChild>
-          <circle
-            cx={12}
-            cy={12}
-            r={10}
-            strokeWidth={2}
-            fill="none"
-            stroke={value}
-          />
-        </RadioGroup.Indicator>
-      </svg>
-    </Box>
-  </RadioGroup.Item>
-);
-
-const ColorWidget = observer(() => {
-  const rootStore = useRootStore();
-
-  const value = getWidgetValue(
-    rootStore.document.selection.items,
-    (v) => v.props.color,
-    "black",
-    undefined
-  );
-
-  return (
-    <RadioGroup.Root
-      value={value}
-      defaultValue={value}
-      onValueChange={(color) =>
-        rootStore.document.selection.items.forEach((s) => s.setColor(color))
-      }
-      asChild
-    >
-      <Box css={{ hStack: 4 }}>
-        <ColorRadioItem value="black" />
-        <ColorRadioItem value="tomato" />
-        <ColorRadioItem value="teal" />
-      </Box>
-    </RadioGroup.Root>
-  );
-});
-
-observer(() => {
-  const rootStore = useRootStore();
-  const [isConfirming, setIsConfirming] = useState(false);
-
-  useEffect(() => {
-    if (rootStore.document.selection.isEmpty) {
-      setIsConfirming(false);
-    }
-  }, [rootStore.document.selection.isEmpty]);
-
-  return (
-    <Box css={{ hStack: 4, padding: "8px 12px" }}>
-      {!isConfirming && (
-        <button
-          disabled={rootStore.document.selection.isEmpty}
-          onClick={() => {
-            setIsConfirming(true);
-          }}
-        >
-          Delete
-        </button>
-      )}
-      {isConfirming && (
-        <>
-          <button
-            onClick={() => {
-              setIsConfirming(false);
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              rootStore.document.deleteEntities(
-                rootStore.document.selection.items
-              );
-              setIsConfirming(false);
-            }}
-          >
-            Confirm
-          </button>
-        </>
-      )}
-    </Box>
-  );
-});
 
 const StaticFretboard = () => {
   const rootStore = useRootStore();
@@ -508,7 +322,6 @@ export const ScalingFretboard = observer(
     {
       width,
       height,
-      children,
       ...props
     }: { width: number; height: number } & SVGAttributes<SVGSVGElement>,
     ref: ForwardedRef<SVGSVGElement>
@@ -531,8 +344,9 @@ export const ScalingFretboard = observer(
           <StringMarks />
           {showStringNames && <StringNames />}
           {showFretNumbers && <FretNumbers />}
-          {children}
+          <ScalingGraphics />
         </g>
+        <NonScalingGraphics />
       </StyledSVG>
     );
   },
@@ -543,38 +357,64 @@ export const ScalingFretboard = observer(
 
 const SelectionMarker = observer(({ node }: { node: AnyNodeInstance }) => {
   const { fretToFingerX, stringToY } = useFretboardData();
+  const root = useRootStore();
 
-  const cx = fretToFingerX(node.props.fret);
-  const cy = stringToY(node.props.string);
+  const [cx, cy] = root.viewport.worldToViewport(
+    fretToFingerX(node.props.fret),
+    stringToY(node.props.string)
+  );
+
+  const r = root.viewport.worldValueToViewportValue(13);
 
   return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={13}
-      stroke="#009EE9ff"
-      strokeWidth="2"
-      fill="none"
-      style={{ vectorEffect: "non-scaling-stroke" }}
-    />
+    <>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        stroke="#009EE9ff"
+        strokeWidth="1.5"
+        fill="none"
+      />
+      {/*<circle*/}
+      {/*  cx={cx}*/}
+      {/*  cy={cy - r}*/}
+      {/*  r={4}*/}
+      {/*  stroke="#009EE9ff"*/}
+      {/*  strokeWidth="1.5"*/}
+      {/*  fill="#fff"*/}
+      {/*/>*/}
+      {/*<circle*/}
+      {/*  cx={cx}*/}
+      {/*  cy={cy + r}*/}
+      {/*  r={4}*/}
+      {/*  stroke="#009EE9ff"*/}
+      {/*  strokeWidth="1.5"*/}
+      {/*  fill="#fff"*/}
+      {/*/>*/}
+    </>
   );
 });
 
 const HoveredMarker = observer(({ node }: { node: AnyNodeInstance }) => {
   const { fretToFingerX, stringToY } = useFretboardData();
+  const root = useRootStore();
 
-  const cx = fretToFingerX(node.props.fret);
-  const cy = stringToY(node.props.string);
+  const [cx, cy] = root.viewport.worldToViewport(
+    fretToFingerX(node.props.fret),
+    stringToY(node.props.string)
+  );
+
+  const r = root.viewport.worldValueToViewportValue(10);
 
   return (
     <circle
       cx={cx}
       cy={cy}
-      r={10}
+      r={r}
       stroke="#009EE9ff"
       strokeWidth="2"
       fill="none"
-      style={{ vectorEffect: "non-scaling-stroke" }}
     />
   );
 });
@@ -589,16 +429,22 @@ const useRootStore = () => {
 };
 
 const PointerToolUI = observer(({ tool }: { tool: PointerToolInstance }) => {
+  const root = useRootStore();
   const interaction = tool.interaction;
+  const rect =
+    interaction?.type === "MARQUEE_SELECT"
+      ? root.viewport.worldRectToViewportRect(interaction.rect)
+      : null;
+
   return (
     <>
       {tool.hoveredNode && <HoveredMarker node={tool.hoveredNode} />}
-      {interaction?.type === "MARQUEE_SELECT" && (
+      {rect && (
         <rect
-          x={interaction.rect.x}
-          y={interaction.rect.y}
-          width={interaction.rect.width}
-          height={interaction.rect.height}
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
           stroke={"#009EE966"}
           fill={"#009EE911"}
         />
@@ -608,27 +454,44 @@ const PointerToolUI = observer(({ tool }: { tool: PointerToolInstance }) => {
 });
 
 const CreateToolUI = observer(({ tool }: { tool: CreateToolInstance }) => {
-  const interaction = tool.interaction;
-  return (
-    <>
-      {tool.hoveredPointer && (
-        <NoteMarker
-          shape="circle"
-          fret={tool.hoveredPointer.props.fret}
-          string={tool.hoveredPointer.props.string}
-        />
-      )}
-    </>
-  );
+  const { fretToFingerX, stringToY } = useFretboardData();
+  const root = useRootStore();
+
+  if (tool.hoveredPointer) {
+    const [cx, cy] = root.viewport.worldToViewport(
+      fretToFingerX(tool.hoveredPointer.props.fret),
+      stringToY(tool.hoveredPointer.props.string)
+    );
+
+    const r = root.viewport.worldValueToViewportValue(10);
+
+    return (
+      <>
+        {tool.hoveredPointer && (
+          <circle cx={cx} cy={cy} r={r} fill="black" opacity={0.5} />
+        )}
+      </>
+    );
+  } else {
+    return null;
+  }
 });
 
-const FretboardGraphics = observer(() => {
+const ScalingGraphics = observer(() => {
   const rootStore = useRootStore();
   return (
     <>
       {rootStore.document.entities.map((model) => (
         <NoteMarker key={model.id} {...model.props} />
       ))}
+    </>
+  );
+});
+
+const NonScalingGraphics = observer(() => {
+  const rootStore = useRootStore();
+  return (
+    <>
       {rootStore.document.selection.items.map((model) => (
         <SelectionMarker key={"selected_" + model.id} node={model} />
       ))}
@@ -642,133 +505,498 @@ const FretboardGraphics = observer(() => {
   );
 });
 
+const EdgeButtonContainer = styled("button", {
+  hStack: 12,
+  padding: 0,
+  border: 0,
+  background: "none",
+  outline: "none",
+  color: "rgb(60,60,60)",
+  appearance: "none",
+  "-webkit-tap-highlight-color": "transparent",
+  userSelect: "none",
+  flexDirection: "$$edgeButtonDirection",
+  "&:hover": { background: "none" },
+  "&:disabled": {
+    color: "rgb(180,180,180)",
+  },
+});
+
+const EdgeButtonIcon = styled("div", {
+  display: "flex",
+  height: 48,
+  width: 48,
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(180,180,180,0.3)",
+  color: "rgb(80,80,80)",
+  border: "none",
+  borderRadius: 100,
+  backdropFilter: "blur(4px)",
+  boxShadow: "0 0 0 0 #009EE9aa",
+  variants: {
+    isSelected: {
+      true: {
+        color: "#009EE9ff",
+        background: "rgba(255,255,255,.6)",
+        boxShadow: "0 0 0 2px #009EE9aa",
+        "&:hover:not(:disabled)": {
+          color: "#009EE9ff",
+          background: "rgba(255,255,255,.6)",
+        },
+      },
+      false: {},
+    },
+    isDisabled: {
+      true: {
+        background: "rgba(60,60,60,0.05)",
+        color: "rgb(180,180,180)",
+      },
+      false: {},
+    },
+    isFilled: {
+      true: {
+        "& svg": {
+          fill: "$$fillColor",
+          stroke: "$$fillColor",
+        },
+      },
+    },
+  },
+});
+
+const EdgeButtonLabel = styled("div", {
+  fontSize: 13,
+  fontWeight: 500,
+});
+
+const leftEdgeVariants: Variants = {
+  initial: { x: -72 },
+  animate: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      duration: 0.4,
+      bounce: 0.2,
+    },
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: 0.1,
+      type: "tween",
+    },
+  },
+};
+
+const bottomEdgeVariants: Variants = {
+  initial: { y: 72 },
+  animate: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      duration: 0.4,
+      bounce: 0.2,
+    },
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: 0.1,
+      type: "tween",
+    },
+  },
+};
+
+const topEdgeVariants: Variants = {
+  initial: { y: -72 },
+  animate: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      duration: 0.4,
+      bounce: 0.2,
+    },
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: 0.1,
+      type: "tween",
+    },
+  },
+};
+
+const rightEdgeVariants: Variants = {
+  initial: { x: 72 },
+  animate: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      duration: 0.4,
+      bounce: 0.2,
+    },
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: 0.1,
+      type: "tween",
+    },
+  },
+};
+
+const EdgeButton = ({
+  Icon,
+  label,
+  fillColor,
+  isSelected = false,
+  isDisabled = false,
+  iconOnly = false,
+  onClick,
+}: {
+  Icon: React.FC<LucideProps>;
+  label: ReactNode;
+  isSelected?: boolean;
+  isDisabled?: boolean;
+  fillColor?: string;
+  iconOnly?: boolean;
+  onClick?: () => void;
+}) => {
+  return (
+    <EdgeButtonContainer
+      as={motion.button}
+      whileTap={!isDisabled ? { scale: 0.9 } : undefined}
+      whileHover={!isDisabled ? { scale: 1.1 } : undefined}
+      disabled={isDisabled}
+      onClick={onClick}
+      css={{ $$fillColor: fillColor }}
+    >
+      {iconOnly ? (
+        <>
+          <EdgeButtonIcon
+            isSelected={isSelected}
+            isFilled={!!fillColor}
+            isDisabled={isDisabled}
+          >
+            <Icon size={20} />
+          </EdgeButtonIcon>
+          <VisuallyHidden.Root>
+            <EdgeButtonLabel>{label}</EdgeButtonLabel>
+          </VisuallyHidden.Root>
+        </>
+      ) : (
+        <>
+          <EdgeButtonIcon isSelected={isSelected} isDisabled={isDisabled}>
+            <Icon size={20} />
+          </EdgeButtonIcon>
+          <EdgeButtonLabel>{label}</EdgeButtonLabel>
+        </>
+      )}
+    </EdgeButtonContainer>
+  );
+};
+
+const SelectionControls = observer(() => {
+  const rootStore = useRootStore();
+  const action = rootStore.document.selection.action;
+  if (action) {
+    switch (action.type) {
+      case "SET_LABEL":
+        return (
+          <RightControls
+            as={motion.div}
+            key="set-label-buttons"
+            variants={rightEdgeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <EdgeButton
+              key="back"
+              Icon={Lucide.ArrowRight}
+              label="Back"
+              onClick={rootStore.document.selection.clearAction}
+            />
+            <ControlSpacer />
+            <EdgeButton
+              key="auto"
+              Icon={Lucide.Asterisk}
+              label="Automatic"
+              onClick={() => action.setKind("note-name")}
+            />
+            <EdgeButton
+              key="clear"
+              Icon={Lucide.XCircle}
+              label="Clear"
+              onClick={action.clearLabel}
+            />
+          </RightControls>
+        );
+      case "SET_COLOR":
+        return (
+          <RightControls
+            as={motion.div}
+            key="set-label-buttons"
+            variants={rightEdgeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <EdgeButton
+              key="back"
+              Icon={Lucide.ArrowRight}
+              label="Back"
+              onClick={rootStore.document.selection.clearAction}
+            />
+            <ControlSpacer />
+            <EdgeButton
+              key="black"
+              Icon={Lucide.Circle}
+              iconOnly
+              label="Black"
+              fillColor="black"
+              onClick={() => action.setColor("black")}
+            />
+            <EdgeButton
+              key="blue"
+              Icon={Lucide.Circle}
+              iconOnly
+              label="Blue"
+              fillColor="blue"
+              onClick={() => action.setColor("blue")}
+            />
+            <EdgeButton
+              key="red"
+              Icon={Lucide.Circle}
+              iconOnly
+              label="Red"
+              fillColor="red"
+              onClick={() => action.setColor("red")}
+            />
+            <EdgeButton
+              key="green"
+              Icon={Lucide.Circle}
+              iconOnly
+              label="Green"
+              fillColor="green"
+              onClick={() => action.setColor("green")}
+            />
+          </RightControls>
+        );
+      case "SET_SHAPE":
+        return (
+          <RightControls
+            as={motion.div}
+            key="set-label-buttons"
+            variants={rightEdgeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <EdgeButton
+              key="back"
+              Icon={Lucide.ArrowRight}
+              label="Back"
+              onClick={rootStore.document.selection.clearAction}
+            />
+            <ControlSpacer />
+            <EdgeButton
+              key="black"
+              Icon={Lucide.Circle}
+              label="Circle"
+              onClick={() => action.setShape("circle")}
+            />
+            <EdgeButton
+              key="black"
+              Icon={Lucide.Square}
+              label="Square"
+              onClick={() => action.setShape("square")}
+            />
+          </RightControls>
+        );
+    }
+  } else {
+    return (
+      <RightControls
+        as={motion.div}
+        key="selection-buttons"
+        variants={rightEdgeVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+      >
+        <EdgeButton
+          key="deselect"
+          Icon={Lucide.X}
+          label="Deselect"
+          onClick={rootStore.document.selection.clear}
+        />
+        <ControlSpacer />
+        <EdgeButton
+          key="label"
+          Icon={Lucide.Type}
+          label="Label"
+          onClick={() => rootStore.document.selection.startAction("label")}
+        />
+        <EdgeButton
+          key="shape"
+          Icon={Lucide.Square}
+          label="Shape"
+          onClick={() => rootStore.document.selection.startAction("shape")}
+        />
+        <EdgeButton
+          key="color"
+          Icon={Lucide.Palette}
+          label="Color"
+          onClick={() => rootStore.document.selection.startAction("color")}
+        />
+        {/*<EdgeButton key="style" Icon={Lucide.Brush} label="Style" />*/}
+        <ControlSpacer />
+        <EdgeButton
+          key="delete"
+          Icon={Lucide.Trash}
+          label="Delete"
+          onClick={rootStore.document.deleteSelection}
+        />
+      </RightControls>
+    );
+  }
+});
+
 const Controls = observer(() => {
   const copyToClipboard = useCopyToClipboard();
   const undoManager = getUndoManager();
   const rootStore = useRootStore();
   return (
     <>
-      <LeftControls>
-        <LayoutGroup>
-          <AnimatePresence>
-            {rootStore.document.selection.hasItems && (
-              <RoundButton
-                key="deselect"
-                as={motion.button}
-                layout
-                initial={{ x: -72 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ opacity: 0 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => rootStore.document.selection.clear()}
-              >
-                <Lucide.XSquare size={20} />
-              </RoundButton>
-            )}
+      <AnimatePresence>
+        {rootStore.document.selection.hasItems && <SelectionControls />}
+        <LeftControls
+          key="tool-select"
+          as={motion.div}
+          variants={leftEdgeVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
+          <EdgeButton
+            Icon={Lucide.MousePointer2}
+            label="Select"
+            onClick={() => rootStore.setToolType("POINTER_TOOL")}
+            isSelected={rootStore.tool.type === "POINTER_TOOL"}
+          />
+          <EdgeButton
+            Icon={Lucide.Pencil}
+            label="Add"
+            onClick={() => rootStore.setToolType("CREATE_TOOL")}
+            isSelected={rootStore.tool.type === "CREATE_TOOL"}
+          />
+        </LeftControls>
+      </AnimatePresence>
+      <AnimatePresence>
+        {rootStore.document.selection.action?.type === "SET_LABEL" && (
+          <TopControls
+            key="label-editor"
+            as={motion.div}
+            variants={topEdgeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <Box
+              as="input"
+              css={{
+                border: "none",
+                borderRadius: 8,
+                marginTop: 24,
+                boxShadow: "0px 0px 0px 0px #009EE9aa",
+                transition: "box-shadow 0.2s ease-out",
+                fontSize: 28,
+                padding: 8,
+                outline: "none",
+                backdropFilter: "blur(4px)",
+                background: "rgba(255,255,255,.8)",
+                color: "rgb(80,80,80)",
+                "&:focus": {
+                  boxShadow: "0px 0px 0px 2px #009EE9aa",
+                },
+              }}
+              type="text"
+              value={rootStore.document.selection.action.label}
+              onChange={(e) =>
+                rootStore.document.selection.action!.setLabel(
+                  e.currentTarget.value
+                )
+              }
+            />
+          </TopControls>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        <BottomControls
+          as={motion.div}
+          variants={bottomEdgeVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
+          <RoundButton
+            key="undo"
+            as={motion.button}
+            layout
+            initial={{ y: 72 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ opacity: 0 }}
+            whileTap={{ scale: 0.9 }}
+            disabled={!undoManager.canUndo}
+            onClick={undoManager.undo}
+          >
+            <Lucide.Undo size={20} />
+          </RoundButton>
+          <RoundButton
+            key="redo"
+            as={motion.button}
+            layout
+            initial={{ y: 72 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ opacity: 0 }}
+            whileTap={{ scale: 0.9 }}
+            disabled={!undoManager.canRedo}
+            onClick={undoManager.redo}
+          >
+            <Lucide.Redo size={20} />
+          </RoundButton>
+          <Box css={{ marginLeft: "auto", hStack: 8 }}>
             <RoundButton
-              key="pointer"
-              as={motion.button}
-              layout
-              initial={{ x: -72 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ opacity: 0 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => rootStore.setToolType("POINTER_TOOL")}
-              isActive={rootStore.tool.type === "POINTER_TOOL"}
-            >
-              <Lucide.MousePointer2 size={20} />
-            </RoundButton>
-            <RoundButton
-              key="create"
-              as={motion.button}
-              layout
-              initial={{ x: -72 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ opacity: 0 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => rootStore.setToolType("CREATE_TOOL")}
-              isActive={rootStore.tool.type === "CREATE_TOOL"}
-            >
-              <Lucide.Pencil size={20} />
-            </RoundButton>
-
-            {rootStore.document.selection.hasItems && (
-              <RoundButton
-                key="delete"
-                as={motion.button}
-                layout
-                initial={{ x: -72 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ opacity: 0 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() =>
-                  rootStore.document.deleteEntities(
-                    rootStore.document.selection.items
-                  )
-                }
-              >
-                <Lucide.Trash size={20} />
-              </RoundButton>
-            )}
-          </AnimatePresence>
-        </LayoutGroup>
-      </LeftControls>
-      <BottomControls>
-        <LayoutGroup>
-          <AnimatePresence>
-            <RoundButton
-              key="undo"
+              key="copy"
               as={motion.button}
               layout
               initial={{ y: 72 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ opacity: 0 }}
               whileTap={{ scale: 0.9 }}
-              disabled={!undoManager.canUndo}
-              onClick={undoManager.undo}
+              onClick={copyToClipboard}
             >
-              <Lucide.Undo size={20} />
+              <Lucide.Clipboard size={20} />
             </RoundButton>
-            <RoundButton
-              key="redo"
-              as={motion.button}
-              layout
-              initial={{ y: 72 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ opacity: 0 }}
-              whileTap={{ scale: 0.9 }}
-              disabled={!undoManager.canRedo}
-              onClick={undoManager.redo}
-            >
-              <Lucide.Redo size={20} />
-            </RoundButton>
-            <Box css={{ marginLeft: "auto", hStack: 8 }}>
-              <RoundButton
-                key="copy"
-                as={motion.button}
-                layout
-                initial={{ y: 72 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ opacity: 0 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={copyToClipboard}
-              >
-                <Lucide.Clipboard size={20} />
-              </RoundButton>
-              {/*<RoundButton*/}
-              {/*  as={motion.button}*/}
-              {/*  layout*/}
-              {/*  initial={{ y: 72 }}*/}
-              {/*  animate={{ y: 0, opacity: 1 }}*/}
-              {/*  exit={{ opacity: 0 }}*/}
-              {/*  whileTap={{ scale: 0.9 }}*/}
-              {/*>*/}
-              {/*  <Lucide.Settings size={20} />*/}
-              {/*</RoundButton>*/}
-            </Box>
-          </AnimatePresence>
-        </LayoutGroup>
-      </BottomControls>
+            {/*<RoundButton*/}
+            {/*  as={motion.button}*/}
+            {/*  layout*/}
+            {/*  initial={{ y: 72 }}*/}
+            {/*  animate={{ y: 0, opacity: 1 }}*/}
+            {/*  exit={{ opacity: 0 }}*/}
+            {/*  whileTap={{ scale: 0.9 }}*/}
+            {/*>*/}
+            {/*  <Lucide.Settings size={20} />*/}
+            {/*</RoundButton>*/}
+          </Box>
+        </BottomControls>
+      </AnimatePresence>
     </>
   );
 });
@@ -919,9 +1147,7 @@ export const MarkerEditor = observer(
               width={width}
               height={height}
               {...touchProps}
-            >
-              <FretboardGraphics />
-            </ScalingFretboard>
+            />
           </Workspace>
           <Controls />
         </EditorLayout>

@@ -4,7 +4,6 @@ import {
   Instance,
   types as t,
 } from "mobx-state-tree";
-import { NotePlacement } from "../types";
 import { ZoomTransform } from "d3-zoom";
 import * as d3 from "d3";
 import { DocumentNode } from "./document";
@@ -68,51 +67,11 @@ export const ViewportData = t
     },
   }));
 
-const BoardData = t
-  .model()
-  .volatile(() => ({
-    findNearestNote(x: number, y: number): NotePlacement {
-      throw new Error("Please call setFindNearestNote first");
-    },
-    extent: new DOMRectReadOnly(),
-    stringToY(string: number): number {
-      throw new Error("Please call setStringToY first");
-    },
-    fretToX(fret: number): number {
-      throw new Error("Please call setStringToY first");
-    },
-  }))
-  .actions((self) => ({
-    setFindNearestNote(fn: (x: number, y: number) => NotePlacement) {
-      self.findNearestNote = fn;
-    },
-    setStringToY(fn: (string: number) => number) {
-      self.stringToY = fn;
-    },
-    setFretToX(fn: (fret: number) => number) {
-      self.fretToX = fn;
-    },
-    setExtent(extent: DOMRectReadOnly) {
-      self.extent = extent;
-    },
-  }))
-  .views((self) => ({
-    isPointInBoard(x: number, y: number) {
-      return (
-        x >= self.extent.left &&
-        x <= self.extent.right &&
-        y >= self.extent.top &&
-        y <= self.extent.bottom
-      );
-    },
-  }));
-
 export const RootStore = t
   .model({
     document: t.optional(DocumentNode, {}),
     tool: t.optional(t.union(PointerTool, CreateTool), {}),
     viewport: t.optional(ViewportData, {}),
-    board: t.optional(BoardData, {}),
   })
   .actions((self) => ({
     setToolType(toolType: "POINTER_TOOL" | "CREATE_TOOL") {

@@ -4,19 +4,17 @@ import React, {
   HTMLProps,
   useContext,
 } from "react";
-import { colors } from "./stitches.config";
-import { Interval, Note, NoteLiteral, Scale } from "@tonaljs/tonal";
-import { NotePlacement, NoteType, StringAndFret } from "./types";
+import { colors } from "../stitches.config";
+import { NoteLiteral } from "@tonaljs/tonal";
+import {
+  NoteCoordinate,
+  NotePlacement,
+  NoteType,
+  StringAndFret,
+} from "../types";
 import * as d3 from "d3";
-import { isDefined } from "./is_defined";
-
-const STANDARD_TUNING = ["E4", "B3", "G3", "D3", "A2", "E2"];
-const STRING_LENGTH = 1400;
-const TOTAL_FRET_COUNT = 24;
-
-function transposeBySemitones(note: string, semitones: number) {
-  return Note.fromMidi(Note.midi(note)! + semitones);
-}
+import { FretboardLogic } from "./create_fretboard";
+import { FretboardLayout } from "./create_fretboard_layout";
 
 interface FretboardData {
   boardExtent: { top: number; left: number; bottom: number; right: number };
@@ -39,37 +37,11 @@ interface FretboardData {
   totalHeight: number;
   totalWidth: number;
   tuning: NoteType[];
-  findNearestNote: (x: number, y: number) => NotePlacement;
+  findNearestNote: (x: number, y: number) => NoteCoordinate;
   placementToNote: (placement: StringAndFret) => NoteType | null;
 }
 
 const FretboardDataContext = createContext<FretboardData>({} as any);
-
-interface FretboardProps {
-  showFretNumbers: boolean;
-  showStringNames: boolean;
-  margin: {
-    top: number;
-    right: number;
-    left: number;
-    bottom: number;
-  };
-  minFret: number;
-  maxFret: number;
-  tuning: string[];
-  children: React.ReactNode;
-}
-
-const fretProportion = (fretNum: number): number => {
-  if (fretNum <= 0) {
-    return 0;
-  }
-
-  const nutToFretMinusOne = fretProportion(fretNum - 1);
-  const bridgeToFretMinusOne = 1 - nutToFretMinusOne;
-
-  return bridgeToFretMinusOne / 17.817 + nutToFretMinusOne;
-};
 
 export const FretMarks = () => {
   const { minFret, maxFret, boardExtent, fretToX } = useFretboardData();
@@ -91,6 +63,7 @@ export const FretMarks = () => {
     </>
   );
 };
+
 export const DotMarks = () => {
   const {
     minFret,
@@ -239,143 +212,45 @@ export const Fretboard: React.FC<
     </svg>
   );
 };
-export const FretboardData = ({
-  showFretNumbers = true,
-  showStringNames = false,
-  minFret = 0,
-  maxFret = TOTAL_FRET_COUNT,
-  margin = {
-    top: 16,
-    right: 16,
-    left: showStringNames ? 32 : 16,
-    bottom: showFretNumbers ? 32 : 16,
-  },
-  tuning: rawTuning = STANDARD_TUNING,
+
+interface FretboardProps {
+  logic: FretboardLogic;
+  layout: FretboardLayout;
+  children?: React.ReactNode;
+}
+
+export const FretboardDataProvider = ({
+  logic,
+  layout,
   children,
-}: Partial<FretboardProps>) => {
-  const tuning = rawTuning.map((note) => Note.get(note) as NoteType);
+}: FretboardProps) => {
+  const {
+    fretIsVisible,
+    maxFret,
+    maxNote,
+    maxString,
+    minFret,
+    minNote,
+    minString,
+    numStrings,
+    octaveMarkerFrets,
+    placeNote,
+    placementToNote,
+    secondaryMarkerFrets,
+    tuning,
+  } = logic;
 
-  const numStrings = rawTuning.length;
-  const minString = 1;
-  const maxString = numStrings;
-
-  const stringInset = 12;
-  const fretPadding = 8;
-  const fretMarginLeft = minFret === 0 ? 0 : fretPadding;
-  const fretMarginRight = maxFret === TOTAL_FRET_COUNT ? 0 : fretPadding;
-
-  const totalWidth =
-    STRING_LENGTH * (fretProportion(maxFret) - fretProportion(minFret)) +
-    margin.left +
-    margin.right +
-    fretMarginLeft +
-    fretMarginRight;
-
-  const totalHeight = 200;
-
-  const boardExtent = {
-    top: margin.top,
-    right: totalWidth - margin.right,
-    bottom: totalHeight - margin.bottom,
-    left: margin.left,
-  };
-
-  const fretToXInternal = d3
-    .scaleLinear()
-    .domain([fretProportion(minFret), fretProportion(maxFret)])
-    .range([
-      boardExtent.left + fretMarginLeft,
-      boardExtent.right - fretMarginRight,
-    ]);
-
-  const fretToX = (fretNum: number) => {
-    return fretToXInternal(fretProportion(fretNum));
-  };
-
-  const fretToFingerX = (fret: number) =>
-    fret === minFret
-      ? fretToX(fret)
-      : d3.interpolate(fretToX(fret - 1), fretToX(fret))(0.66);
-
-  const fretToCenterX = (fretNum: number) =>
-    fretNum === minFret
-      ? fretToX(fretNum)
-      : (fretToX(fretNum - 1) + fretToX(fretNum)) / 2;
-
-  const stringToY = d3
-    .scaleLinear()
-    .domain([1, numStrings])
-    .range([margin.top + stringInset, boardExtent.bottom - stringInset]);
-
-  const placeNote = (noteLiteral: NoteLiteral): NotePlacement[] => {
-    const note = Note.get(noteLiteral);
-    if (note.empty) {
-      return [];
-    } else {
-      return tuning
-        .map((stringNote, stringNumber) => [
-          note.height - stringNote.height,
-          stringNumber + 1,
-        ])
-        .filter(([fret]) => fretIsVisible(fret))
-        .map(([fret, string]) => ({
-          note,
-          fret,
-          string,
-          isOpen: fret === 0,
-          x: fretToCenterX(fret),
-          y: stringToY(string),
-        }));
-    }
-  };
-
-  const fretIsVisible = (fretNum: number) =>
-    fretNum >= minFret && fretNum <= maxFret;
-
-  const minNote = Note.get(
-    Note.sortedNames(
-      tuning.map((n) => Note.transpose(n, Interval.fromSemitones(minFret)))
-    )[0]
-  ) as NoteType;
-
-  const maxNote = Note.get(
-    Note.sortedNames(
-      tuning.map((n) => Note.transpose(n, Interval.fromSemitones(maxFret)))
-    )[tuning.length - 1]
-  ) as NoteType;
-
-  const allNotesOnBoard = Scale.rangeOf("C chromatic")(
-    minNote.name,
-    maxNote.name
-  )
-    .filter(isDefined)
-    .map(placeNote)
-    .flat();
-
-  const delaunay = d3.Delaunay.from(
-    allNotesOnBoard,
-    (d) => d.x,
-    (d) => d.y
-  );
-
-  const findNearestNote = (x: number, y: number): NotePlacement => {
-    return allNotesOnBoard[delaunay.find(x, y)]!;
-  };
-
-  const placementToNote = ({ string, fret }: StringAndFret) => {
-    const stringIndex = string - 1;
-    if (!(stringIndex < 0 || stringIndex >= tuning.length)) {
-      const note = tuning[stringIndex];
-      return Note.get(
-        Note.transpose(note, Interval.fromSemitones(fret))
-      ) as NoteType;
-    } else {
-      return null;
-    }
-  };
-
-  const octaveMarkerFrets = [12, 24];
-  const secondaryMarkerFrets = [3, 5, 7, 9, 15, 17, 19, 21];
+  const {
+    boardExtent,
+    findNearestNote,
+    fretToFingerX,
+    fretToX,
+    showFretNumbers,
+    showStringNames,
+    stringToY,
+    totalHeight,
+    totalWidth,
+  } = layout;
 
   return (
     <FretboardDataContext.Provider

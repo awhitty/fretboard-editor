@@ -23,11 +23,17 @@ export const BaseInteraction = t
   .views((self) => ({
     get currentNote(): NotePlacement {
       const root = getTypedRoot(self);
-      return root.board.findNearestNote(self.current.x, self.current.y);
+      return root.document.fretboard.layout.findNearestNote(
+        self.current.x,
+        self.current.y
+      );
     },
     get startNote(): NotePlacement {
       const root = getTypedRoot(self);
-      return root.board.findNearestNote(self.start.x, self.start.y);
+      return root.document.fretboard.layout.findNearestNote(
+        self.start.x,
+        self.start.y
+      );
     },
     get hasMoved(): boolean {
       return self.start.x !== self.current.x || self.start.y !== self.current.y;

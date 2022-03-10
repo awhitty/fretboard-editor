@@ -7,8 +7,10 @@ export interface NotePlacement {
   fret: number;
   string: number;
   isOpen: boolean;
-  x: number;
-  y: number;
+}
+
+export interface NoteCoordinate extends NotePlacement {
+  point: Point2D;
 }
 
 export interface StringAndFret {

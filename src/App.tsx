@@ -1,11 +1,10 @@
 import makeInspectable from "mobx-devtools-mst";
 
 import React, { useMemo } from "react";
-import { RootStore } from "./state/root_store";
-import { FretboardData } from "./Fretboard";
-import { MarkerEditor } from "./MarkerEditor";
+import { RootStore } from "./models/root_store";
+import { Editor } from "./ui/Editor";
 import { observer } from "mobx-react-lite";
-import { setUndoManager } from "./state/undo";
+import { setUndoManager } from "./models/undo";
 
 const App = observer(() => {
   const rootStore = useMemo(() => {
@@ -15,15 +14,7 @@ const App = observer(() => {
     return root;
   }, []);
 
-  return (
-    <FretboardData
-      minFret={rootStore.document.boardConfig.minFret}
-      maxFret={rootStore.document.boardConfig.maxFret}
-      showFretNumbers={rootStore.document.boardConfig.showFretNumbers}
-    >
-      <MarkerEditor rootStore={rootStore} />
-    </FretboardData>
-  );
+  return <Editor rootStore={rootStore} />;
 });
 
 export default App;

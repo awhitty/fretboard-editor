@@ -26,8 +26,14 @@ export const PointerTool = t
       const root = getTypedRoot(self);
       getUndoManager().startGroup();
 
-      const isPointInBoard = root.board.isPointInBoard(point.x, point.y);
-      const nearestNote = root.board.findNearestNote(point.x, point.y);
+      const isPointInBoard = root.document.fretboard.layout.isPointInBoard(
+        point.x,
+        point.y
+      );
+      const nearestNote = root.document.fretboard.layout.findNearestNote(
+        point.x,
+        point.y
+      );
       const node = isPointInBoard
         ? root.document.firstNodeAtCoord(nearestNote)
         : null;
@@ -63,8 +69,14 @@ export const PointerTool = t
     },
     move(point: Point2D) {
       const root = getTypedRoot(self);
-      const notePlacement = root.board.findNearestNote(point.x, point.y);
-      const isPointInBoard = root.board.isPointInBoard(point.x, point.y);
+      const notePlacement = root.document.fretboard.layout.findNearestNote(
+        point.x,
+        point.y
+      );
+      const isPointInBoard = root.document.fretboard.layout.isPointInBoard(
+        point.x,
+        point.y
+      );
 
       if (self.interaction) {
         self.interaction.update(point);
@@ -105,7 +117,10 @@ export const CreateTool = t
       const root = getTypedRoot(self);
       getUndoManager().startGroup();
 
-      const isPointInBoard = root.board.isPointInBoard(point.x, point.y);
+      const isPointInBoard = root.document.fretboard.layout.isPointInBoard(
+        point.x,
+        point.y
+      );
 
       if (isPointInBoard) {
         self.hoveredPointer = null;
@@ -120,8 +135,14 @@ export const CreateTool = t
     },
     move(point: Point2D) {
       const root = getTypedRoot(self);
-      const notePlacement = root.board.findNearestNote(point.x, point.y);
-      const isPointInBoard = root.board.isPointInBoard(point.x, point.y);
+      const notePlacement = root.document.fretboard.layout.findNearestNote(
+        point.x,
+        point.y
+      );
+      const isPointInBoard = root.document.fretboard.layout.isPointInBoard(
+        point.x,
+        point.y
+      );
 
       if (self.interaction) {
         self.interaction.update(point);

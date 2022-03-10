@@ -4,6 +4,12 @@ import { ulid } from "ulid";
 import { NoteTransform, StringAndFret } from "../types";
 import { identityTransform } from "./note_transforms";
 import { getTypedRoot } from "./root_store";
+import {
+  createFretboardLogic,
+  STANDARD_TUNING,
+} from "../fretboard/create_fretboard";
+import { createFretboardLayout } from "../fretboard/create_fretboard_layout";
+import { Palette } from "../ui/Palette";
 
 const LabelKind = t.union(t.literal("note-name"), t.literal("manual"));
 
@@ -65,11 +71,20 @@ export const DotMarkerNode = t
 
 export interface DotMarkerNodeInstance extends Instance<typeof DotMarkerNode> {}
 
-export const BoardConfig = t.model({
-  minFret: t.optional(t.number, 0),
-  maxFret: t.optional(t.number, 9),
-  showFretNumbers: t.optional(t.boolean, true),
-});
+export const FretboardData = t
+  .model({
+    minFret: t.optional(t.number, 0),
+    maxFret: t.optional(t.number, 9),
+    showFretNumbers: t.optional(t.boolean, true),
+  })
+  .views((self) => ({
+    get logic() {
+      return createFretboardLogic(STANDARD_TUNING, self.minFret, self.maxFret);
+    },
+    get layout() {
+      return createFretboardLayout(this.logic, self.showFretNumbers);
+    },
+  }));
 
 export const DotNodeReference = t.safeReference(DotMarkerNode, {
   acceptsUndefined: false,
@@ -127,6 +142,9 @@ const SetLabelAction = t
     },
   }));
 
+export interface SetLabelActionInstance
+  extends Instance<typeof SetLabelAction> {}
+
 const SetShapeAction = t
   .model("SetShapeAction", {
     type: optionalLiteral("SET_SHAPE"),
@@ -149,6 +167,9 @@ const SetShapeAction = t
     },
   }));
 
+export interface SetShapeActionInstance
+  extends Instance<typeof SetShapeAction> {}
+
 const SetColorAction = t
   .model("SetColorAction", {
     type: optionalLiteral("SET_COLOR"),
@@ -170,6 +191,9 @@ const SetColorAction = t
       root.document.selection.items.forEach((item) => item.setColor(color));
     },
   }));
+
+export interface SetColorActionInstance
+  extends Instance<typeof SetColorAction> {}
 
 export const Selection = t
   .model({
@@ -247,7 +271,7 @@ export const Selection = t
 
 export const DocumentNode = t
   .model("DocumentNode", {
-    boardConfig: t.optional(BoardConfig, {}),
+    fretboard: t.optional(FretboardData, {}),
     entities: t.array(DotMarkerNode),
     selection: t.optional(Selection, {}),
   })
@@ -264,10 +288,9 @@ export const DocumentNode = t
     },
     findNodesInRect(rect: DOMRectReadOnly): AnyNodeInstance[] {
       return self.entities.filter((e) => {
-        const root = getTypedRoot(self);
         const { fret, string } = e.props;
-        const x = root.board.fretToX(fret);
-        const y = root.board.stringToY(string);
+        const x = self.fretboard.layout.fretToX(fret);
+        const y = self.fretboard.layout.stringToY(string);
         return (
           x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
         );
@@ -280,6 +303,7 @@ export const DocumentNode = t
         name: `Marker ${self.entities.length + 1}`,
         _fret: fret,
         _string: string,
+        _color: Palette.Dark,
       });
 
       self.entities.push(dot);
